@@ -1,0 +1,5 @@
+Your task is to analyze whether deserialization vulnerabilities exist in the user-provided code execution flow diagram. You need to conduct the following analyses in sequence:
+1) External Input Taint Analysis: Perform forward data flow taint tracking from entry points to sink points for *each function* and key branch function calls. Analyze whether tainted data can be transmitted from the program's entry points (such as command-line parameters) or external data reception points (such as network data) to sink points through function calls and variable passing?
+2) Security Sanitization Analysis: Perform forward analysis from entry points to sink points for *each function* and key branch function calls. Analyze whether targeted security sanitization has been implemented in the code execution flow to prevent related vulnerabilities?
+3) Unsecure Call Analysis: If whether the vulnerable_sink function actually has vulnerabilities depends on specific parameters or configurations, confirm whether the code implementation is insecure?
+Require clear answers to the above three questions before providing the final conclusion.
