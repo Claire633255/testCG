@@ -78,10 +78,12 @@ class AttackPathVisualizer:
         """根据类型组合获取节点样式"""
         # 基础颜色映射
         base_colors = {
-            'vulnerable_sink': "#FFA4A4",       
-            'attack_source': "#FFFFA9",
-            'taint_propagation': "#FFFFA9",
-            'security_sanitizer': "#D5FFB8",
+            'vulnerable_sink': "#EF5350",       # 强烈红色 (危险/漏洞利用点),       
+            'attack_source': "#0000FF",         # 亮蓝色 (外部输入/污染源起点)
+            # 'attack_source': "#FFFFA9",  
+            # 'taint_propagation': "#FFFFA9",
+            'taint_propagation': "#FFFF00",     # 强烈黄色（污染传播）
+            'security_sanitizer': "#66BB6A",    # 强烈绿色 (净化器/安全节点)
         }
         return {
             'fillcolor': base_colors.get(node_type, "#EEEEEE"),
@@ -89,8 +91,8 @@ class AttackPathVisualizer:
             'shape': 'box'
         }
     
-    def init_digraph(self):
-        dot = graphviz.Digraph(graph_attr={'dpi': '72'})
+    def init_digraph(self, dpi: int = 100):
+        dot = graphviz.Digraph(graph_attr={'dpi': f'{dpi}'})
         
         # 设置图的属性 - 使用支持中文的字体
         dot.attr(rankdir='TB')  # 从上到下布局
@@ -122,13 +124,13 @@ class AttackPathVisualizer:
         
         dot.attr('edge', 
                 fontname='WenQuanYi Micro Hei, WenQuanYi Zen Hei, DejaVu Sans',  # 使用已安装的中文字体
-                fontsize='12',
+                fontsize='50',
                 color='black',
                 arrowhead='vee')
         
         return dot
 
-    def create_entry_sink_callgraph(self, output_path: str, path_info: Dict[str, Any], function_analysis_records, additional_remarks: str = None) -> str:
+    def create_entry_sink_callgraph(self, output_path: str, path_info: Dict[str, Any], function_analysis_records, additional_remarks: str = None, dpi: int = 72, set_dpi_in_name: bool = False, method: str = '') -> str:
         """
         创建入口点到漏洞点的攻击路径图表
         
@@ -144,7 +146,7 @@ class AttackPathVisualizer:
         Returns:
             生成的图片文件路径
         """
-        dot = self.init_digraph()
+        dot = self.init_digraph(dpi=dpi)
         
         # 设置图表标题
         entry_name = path_info.get("entry_name")
@@ -198,32 +200,58 @@ class AttackPathVisualizer:
         # 添加节点
         for node_name in all_nodes:
             if node_name not in processed_nodes:
-                
                 # 构建节点标签
                 label_lines = [
                     '<TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" COLOR="black" BGCOLOR="white">',
                     '<TR><TD ALIGN="CENTER" BGCOLOR="white" BORDER="0"><FONT FACE="WenQuanYi Micro Hei, WenQuanYi Zen Hei, DejaVu Sans" COLOR="black">{}</FONT></TD></TR>'.format(
-                        html.escape(node_name)
+                        html.escape(node_name.replace('.', ':').replace('_', '@') if method=='changeCharactor' else node_name)
                     ),
                 ]
                 
                 # 添加分析信息
-                if node_name in function_analysis_records:
-                    analysis_info = function_analysis_records[node_name]
-                    for ana_type, ana_desc in analysis_info.items():
-                        node_style = self._get_node_style_for_types(ana_type)
-                        if(ana_type in ["key_codes"]):
-                            # wrapped_lines = self._wrap_text(f"关键代码: \n{ana_desc}")
-                            wrapped_lines = self._wrap_text(f"### Key Codes ###\n{ana_desc}")
-                        else:
-                            wrapped_lines = self._wrap_text(f"{ana_type}: {ana_desc}")
-                        for line in wrapped_lines:
+                if node_name in function_analysis_records: 
+                    if method != 'onlyFuncName' :
+                        analysis_info = function_analysis_records[node_name]
+                        for ana_type, ana_desc in analysis_info.items():
+                            # TODO debug: overlook some knowledge
+                            # if ana_type in ["attack_source", "taint_propagation", "security_sanitizer", "summary"]:
+                            #     continue
+
+                            node_style = self._get_node_style_for_types(ana_type)
+                            if(ana_type in ["key_codes"]):
+                                # wrapped_lines = self._wrap_text(f"关键代码: \n{ana_desc}")
+                                wrapped_lines = self._wrap_text(f"### Key Codes ###\n{ana_desc}")
+                            else:
+                                wrapped_lines = self._wrap_text(f"{ana_type}: {ana_desc}")
+                            for line in wrapped_lines:
+                                label_lines.append(
+                                    '<TR><TD ALIGN="LEFT" BGCOLOR="{}" BORDER="0"><FONT FACE="WenQuanYi Micro Hei, WenQuanYi Zen Hei, DejaVu Sans" COLOR="{}" POINT-SIZE="10">{}</FONT></TD></TR>'.format(
+                                        node_style['fillcolor'], 
+                                        node_style['fontcolor'],
+                                        html.escape(line)
+                                    ))
+                    else:
+                        # 模式：onlyFuncName (稀疏图模式)
+                        # 目标：不显示代码文字，仅在函数名下方追加纯颜色的“视觉色带/色块”
+                        analysis_info = function_analysis_records[node_name]
+                        
+                        for ana_type in analysis_info.keys():
+                            # 获取该分析类型对应的样式（提取其 fillcolor）
+                            node_style = self._get_node_style_for_types(ana_type)
+                            fillcolor = node_style.get('fillcolor', '#FFFFFF')
+                            
+                            # 可选：如果你不想为普通的 'key_codes' (灰色) 生成纯色块，可以在这里跳过
+                            if ana_type == "key_codes":
+                                continue
+
+                            # 添加一个只有底色、没有文字的空行
+                            # 技巧：使用 &#160; (不换行空格) 和 POINT-SIZE 控制色块的厚度(高度)
+                            # POINT-SIZE="14" 能保证色块有足够的面积让 VLM 轻松识别
                             label_lines.append(
-                                '<TR><TD ALIGN="LEFT" BGCOLOR="{}" BORDER="0"><FONT FACE="WenQuanYi Micro Hei, WenQuanYi Zen Hei, DejaVu Sans" COLOR="{}" POINT-SIZE="10">{}</FONT></TD></TR>'.format(
-                                    node_style['fillcolor'], 
-                                    node_style['fontcolor'],
-                                    html.escape(line)
-                                ))
+                                '<TR><TD ALIGN="CENTER" BGCOLOR="{}" BORDER="0" CELLPADDING="2"><FONT POINT-SIZE="14">&#160;</FONT></TD></TR>'.format(
+                                    fillcolor
+                                )
+                            )
                 
                 label_lines.append('</TABLE>')
                 html_label = '<{}>'.format(''.join(label_lines))
@@ -253,6 +281,10 @@ class AttackPathVisualizer:
         
         # 渲染为 PNG
         try:
+            # set png name
+            if set_dpi_in_name:
+                output_path = f'{output_path[:-4]}_dpi_{dpi}{output_path[-4:]}'
+
             dot.render(output_path[:-4], format='png', cleanup=True, engine='dot')
             png_path = f"{output_path[:-4]}.png"
             # logger.debug(f"成功生成: {png_path}")
@@ -269,7 +301,31 @@ class AttackPathVisualizer:
                 except Exception as e:
                     # logger.error(f"创建硬链接失败: {e}")
                     logger.error(f"Failed to create hard link: {e}")
+            return png_path
 
         except Exception as e:
             # logger.error(f"WARNING! 生成图片时出错: {e}")
             logger.error(f"WARNING! Error occurred while generating image: {e}")
+
+
+    def get_nodes(self, path_info: Dict[str, Any]) -> List[str]:
+        """
+        获取当前攻击路径图中的所有节点名称
+        逻辑参考 create_entry_sink_callgraph 中的节点收集过程
+        
+        Args:
+            path_info: 攻击路径信息，包含 call_graph
+            
+        Returns:
+            包含所有节点名称的列表
+        """
+        # 收集所有节点 (参考 create_entry_sink_callgraph 第 147 行)
+        all_nodes = set()
+        call_graph = path_info.get("call_graph", [])
+        
+        # 从调用图中提取所有节点 (参考 create_entry_sink_callgraph 第 150-152 行)
+        for call_edge in call_graph:
+            all_nodes.add(call_edge["caller"])
+            all_nodes.add(call_edge["callee"])
+            
+        return list(all_nodes)

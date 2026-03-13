@@ -426,3 +426,14 @@ def update_function_node(function: str, updates: dict) -> str:
     # 返回成功信息
     updated_str = ", ".join(updated_fields)
     return f"Successfully updated function {function}: {updated_str}"
+
+# 工具列表
+def get_all_tools(language):
+    # tools = [add_new_function, delete_function_node, update_function_node]
+    tools = [add_new_function, update_function_node]
+    return tools
+
+def get_tools_by_name(language):
+    """获取工具名称映射"""
+    tools = get_all_tools(language)
+    return {tool.name: tool for tool in tools}
